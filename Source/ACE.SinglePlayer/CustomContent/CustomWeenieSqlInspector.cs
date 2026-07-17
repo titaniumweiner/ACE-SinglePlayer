@@ -3,6 +3,8 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 
+using AceWeenieType = ACE.Entity.Enum.WeenieType;
+
 namespace ACE.SinglePlayer.CustomContent;
 
 internal sealed record CustomWeenieDefinition(
@@ -15,24 +17,24 @@ internal sealed record CustomWeenieDefinition(
 {
     public string FileName => Path.GetFileName(FilePath);
 
-    public string TypeName => WeenieType switch
+    public string TypeName
     {
-        2 => "Container",
-        6 => "Generic",
-        7 => "Food",
-        9 => "Gem",
-        10 => "Creature",
-        12 => "Vendor",
-        16 => "Melee weapon",
-        17 => "Missile weapon",
-        18 => "Caster",
-        19 => "Clothing",
-        20 => "Armor",
-        21 => "Scroll",
-        22 or 51 => "Stackable",
-        35 => "Generator",
-        _ => $"Type {WeenieType}"
-    };
+        get
+        {
+            if (WeenieType < 0 || !Enum.IsDefined(typeof(AceWeenieType), (uint)WeenieType))
+                return $"Type {WeenieType}";
+
+            var type = (AceWeenieType)(uint)WeenieType;
+            if (type == AceWeenieType.Undef)
+                return "Undefined";
+            if (type == AceWeenieType.UNKNOWN__GUESSEDNAME32)
+                return $"Unknown (type {WeenieType})";
+
+            var name = type.ToString();
+            name = Regex.Replace(name, "([A-Z]+)([A-Z][a-z])", "$1 $2", RegexOptions.CultureInvariant);
+            return Regex.Replace(name, "([a-z0-9])([A-Z])", "$1 $2", RegexOptions.CultureInvariant);
+        }
+    }
 }
 
 internal sealed record CustomWeenieIssue(string FilePath, string Message);

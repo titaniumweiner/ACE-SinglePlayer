@@ -33,6 +33,36 @@ public sealed class CustomWeenieTests
     }
 
     [TestMethod]
+    [DataRow(1, "Generic")]
+    [DataRow(2, "Clothing")]
+    [DataRow(6, "Melee Weapon")]
+    [DataRow(7, "Portal")]
+    [DataRow(10, "Creature")]
+    [DataRow(12, "Vendor")]
+    [DataRow(13, "Hot Spot")]
+    [DataRow(18, "Food")]
+    [DataRow(21, "Container")]
+    [DataRow(28, "Healer")]
+    [DataRow(34, "Scroll")]
+    [DataRow(35, "Caster")]
+    [DataRow(38, "Gem")]
+    [DataRow(51, "Stackable")]
+    public void TypeNamesUseTheCanonicalAceWeenieTypeValues(int type, string expected)
+    {
+        var definition = new CustomWeenieDefinition("test.sql", 1, "test", type, string.Empty, string.Empty);
+
+        Assert.AreEqual(expected, definition.TypeName);
+    }
+
+    [TestMethod]
+    public void UnknownWeenieTypeRetainsItsNumericValue()
+    {
+        var definition = new CustomWeenieDefinition("test.sql", 1, "test", 999, string.Empty, string.Empty);
+
+        Assert.AreEqual("Type 999", definition.TypeName);
+    }
+
+    [TestMethod]
     public void AceForgeEmoteParentPatternIsAllowed()
     {
         var sql = ValidAceForgeSql + """
