@@ -48,7 +48,7 @@ public sealed class CustomWeeniesForm : Form
         TextAlign = ContentAlignment.MiddleLeft,
         AutoEllipsis = true
     };
-    private readonly Button chooseFolder = new() { Text = "Choose AceForge Folder...", AutoSize = true };
+    private readonly Button chooseFolder = new() { Text = "Choose Weenie Folder...", AutoSize = true };
     private readonly Button chooseFiles = new() { Text = "Choose SQL Files...", AutoSize = true };
     private readonly Button openAceForge = new() { Text = "Open AceForge v0.3.36", AutoSize = true };
     private readonly Button openBackups = new() { Text = "Open Backups", AutoSize = true };
@@ -82,13 +82,14 @@ public sealed class CustomWeeniesForm : Form
         var root = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            RowCount = 5,
+            RowCount = 6,
             ColumnCount = 1,
             Padding = new Padding(16),
             BackColor = Night
         };
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 72));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 92));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 56));
@@ -118,6 +119,16 @@ public sealed class CustomWeeniesForm : Form
             BackColor = Color.Transparent
         };
         actions.Controls.AddRange(new Control[] { chooseFolder, chooseFiles, openAceForge, openBackups });
+        var dependencyNotice = new Label
+        {
+            Dock = DockStyle.Fill,
+            BackColor = Color.FromArgb(64, 45, 29),
+            ForeColor = PaleGold,
+            Font = new Font(Font, FontStyle.Bold),
+            Padding = new Padding(10, 8, 10, 8),
+            TextAlign = ContentAlignment.MiddleLeft,
+            Text = "BUNDLED PACK REQUIREMENT: Enable Cast on Strike Expanded in Mods for the ACE Unique Weenies to work as intended."
+        };
 
         var content = new TableLayoutPanel
         {
@@ -155,9 +166,10 @@ public sealed class CustomWeeniesForm : Form
 
         root.Controls.Add(heading, 0, 0);
         root.Controls.Add(explanation, 0, 1);
-        root.Controls.Add(actions, 0, 2);
-        root.Controls.Add(content, 0, 3);
-        root.Controls.Add(footer, 0, 4);
+        root.Controls.Add(dependencyNotice, 0, 2);
+        root.Controls.Add(actions, 0, 3);
+        root.Controls.Add(content, 0, 4);
+        root.Controls.Add(footer, 0, 5);
         Controls.Add(root);
 
         chooseFolder.Click += (_, _) => ChooseFolder();
@@ -165,18 +177,37 @@ public sealed class CustomWeeniesForm : Form
         openAceForge.Click += (_, _) => Open(AceForgeReleaseUrl);
         openBackups.Click += (_, _) => OpenBackupFolder();
         import.Click += async (_, _) => await ImportAsync();
-        status.Text = "Choose AceForge weenie SQL files to begin.";
+        status.Text = "Choose a weenie SQL folder or individual files to begin.";
         issues.Text = "No files selected.";
+        LoadBundledWeenies();
+    }
+
+    private void LoadBundledWeenies()
+    {
+        try
+        {
+            var files = BundledWeenieCatalog.FindSqlFiles(AppContext.BaseDirectory);
+            if (files.Count > 0)
+                LoadFiles(files);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            issues.Text = $"The bundled Weenies folder could not be read: {ex.Message}";
+            status.Text = "Bundled weenies could not be displayed. Choose another folder or individual SQL files.";
+        }
     }
 
     private void ChooseFolder()
     {
         using var dialog = new FolderBrowserDialog
         {
-            Description = "Choose the AceForge output folder containing custom weenie SQL files",
+            Description = "Choose a folder containing custom weenie SQL files",
             UseDescriptionForTitle = true,
             ShowNewFolderButton = false
         };
+        var bundledWeenies = BundledWeenieCatalog.GetRootDirectory(AppContext.BaseDirectory);
+        if (Directory.Exists(bundledWeenies))
+            dialog.SelectedPath = bundledWeenies;
         if (dialog.ShowDialog(this) != DialogResult.OK)
             return;
         try
