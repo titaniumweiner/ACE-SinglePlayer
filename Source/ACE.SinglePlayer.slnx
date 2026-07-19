@@ -7,6 +7,7 @@
   <Project Path="ACE.SinglePlayer.Mods.ACEUniqueWeeniesProc/ACE.SinglePlayer.Mods.ACEUniqueWeeniesProc.csproj" />
   <Project Path="ACE.SinglePlayer.Mods.HelloCommand/ACE.SinglePlayer.Mods.HelloCommand.csproj" />
   <Project Path="ACE.SinglePlayer.Mods.SocietyTailoring/ACE.SinglePlayer.Mods.SocietyTailoring.csproj" />
+  <Project Path="ACE.SinglePlayer.Mods.UnlimitedStatAugmentation/ACE.SinglePlayer.Mods.UnlimitedStatAugmentation.csproj" />
   <Project Path="ACE.SinglePlayer.DecalHost/ACE.SinglePlayer.DecalHost.csproj" />
   <Project Path="ACE.SinglePlayer.TestHost/ACE.SinglePlayer.TestHost.csproj" />
   <Project Path="ACE.SinglePlayer.Tests/ACE.SinglePlayer.Tests.csproj" />

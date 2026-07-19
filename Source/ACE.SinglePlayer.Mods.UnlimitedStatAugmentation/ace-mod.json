@@ -1,0 +1,8 @@
+{
+  "formatVersion": 1,
+  "id": "opendereth.unlimited-stat-augmentation-gems",
+  "name": "Unlimited Stat Augmentation Gems",
+  "version": "1.0.0-sp1",
+  "folderName": "UnlimitedStatAugmentation",
+  "entryAssembly": "UnlimitedStatAugmentation.dll"
+}

@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
+using ACE.Entity.Enum;
 using ACE.Server.Command;
 using ACE.Server.Entity;
 using ACE.Server.WorldObjects;
@@ -41,7 +42,7 @@ public sealed class ModTests
     [TestMethod]
     public void CuratedCatalogIncludesCustomClothingBaseAsWarnedPreview()
     {
-        Assert.AreEqual(24, CuratedModCatalog.Entries.Count);
+        Assert.AreEqual(25, CuratedModCatalog.Entries.Count);
         var entry = CuratedModCatalog.Entries.Single(item => item.Id == "optimshi.custom-clothing-base");
         Assert.AreEqual("OptimShi", entry.Author);
         Assert.AreEqual(ModCatalogAvailability.Preview, entry.Availability);
@@ -66,6 +67,83 @@ public sealed class ModTests
         Assert.IsTrue(entry.SourceUrl.Contains("titaniumweiner/ACEUniqueWeenies", StringComparison.Ordinal));
         Assert.IsTrue(entry.PreviewNotice.Contains("not been thoroughly tested", StringComparison.OrdinalIgnoreCase));
         Assert.IsTrue(entry.PackageRelativePath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [TestMethod]
+    public void CuratedCatalogIncludesUnlimitedStatAugmentationAsWarnedPreview()
+    {
+        var entry = CuratedModCatalog.Entries.Single(item =>
+            item.Id == "opendereth.unlimited-stat-augmentation-gems");
+
+        Assert.AreEqual("Unlimited Stat Augmentation Gems", entry.Name);
+        Assert.AreEqual("OpenDereth", entry.Author);
+        Assert.AreEqual(ModCatalogAvailability.Preview, entry.Availability);
+        Assert.AreEqual(ModDataImpact.CharacterData, entry.DataImpact);
+        Assert.AreEqual(ModRemovalPolicy.ChangesRemain, entry.RemovalPolicy);
+        Assert.IsTrue(entry.Description.Contains("100", StringComparison.Ordinal));
+        CollectionAssert.Contains(entry.ConflictIds?.ToArray() ?? Array.Empty<string>(), "aquafir.quality-of-life");
+        Assert.IsTrue(entry.PreviewNotice.Contains("not yet been thoroughly tested", StringComparison.OrdinalIgnoreCase));
+        Assert.IsTrue(entry.PackageRelativePath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [TestMethod]
+    [DoNotParallelize]
+    public void UnlimitedStatAugmentationChangesOnlyStatGemLimitsAndCanBeRemoved()
+    {
+        var originalLimits = AugmentationDevice.MaxAugs.ToDictionary(pair => pair.Key, pair => pair.Value);
+        var safetyGetter = AccessTools.PropertyGetter(typeof(AugmentationDevice),
+            nameof(AugmentationDevice.AttributeAugmentationSafetyCapEnabled));
+        Assert.IsNotNull(safetyGetter);
+
+        var mod = new UnlimitedStatAugmentation.Mod();
+        try
+        {
+            mod.Initialize();
+
+            CollectionAssert.AreEquivalent(new[]
+            {
+                AugmentationType.Strength,
+                AugmentationType.Endurance,
+                AugmentationType.Coordination,
+                AugmentationType.Quickness,
+                AugmentationType.Focus,
+                AugmentationType.Self
+            }, UnlimitedStatAugmentation.Mod.AttributeTypes.ToArray());
+
+            foreach (var type in UnlimitedStatAugmentation.Mod.AttributeTypes)
+                Assert.AreEqual(int.MaxValue, AugmentationDevice.MaxAugs[type]);
+
+            foreach (var (type, limit) in originalLimits.Where(pair =>
+                         !UnlimitedStatAugmentation.Mod.AttributeTypes.Contains(pair.Key)))
+                Assert.AreEqual(limit, AugmentationDevice.MaxAugs[type], $"{type} should keep its stock limit.");
+
+            var patchInfo = Harmony.GetPatchInfo(safetyGetter);
+            Assert.IsNotNull(patchInfo);
+            Assert.IsTrue(patchInfo.Postfixes.Any(patch =>
+                patch.owner == UnlimitedStatAugmentation.Mod.HarmonyId));
+            var safetyCapEnabled = false;
+            UnlimitedStatAugmentation.AttributeSafetyCapPatch.KeepStatMaximumAtOneHundred(ref safetyCapEnabled);
+            Assert.IsTrue(safetyCapEnabled);
+        }
+        finally
+        {
+            try
+            {
+                mod.Dispose();
+            }
+            finally
+            {
+                foreach (var (type, limit) in originalLimits)
+                    AugmentationDevice.MaxAugs[type] = limit;
+            }
+        }
+
+        foreach (var (type, limit) in originalLimits)
+            Assert.AreEqual(limit, AugmentationDevice.MaxAugs[type]);
+
+        var remaining = Harmony.GetPatchInfo(safetyGetter);
+        Assert.IsTrue(remaining is null || remaining.Postfixes.All(patch =>
+            patch.owner != UnlimitedStatAugmentation.Mod.HarmonyId));
     }
 
     [TestMethod]

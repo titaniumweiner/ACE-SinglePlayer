@@ -1,0 +1,14 @@
+{
+  "Name": "Unlimited Stat Augmentation Gems",
+  "Author": "OpenDereth",
+  "Description": "Removes the shared usage limit from Strength, Endurance, Coordination, Quickness, Focus, and Self augmentation gems while keeping every innate stat capped at 100.",
+  "Version": "1.0.0-sp1",
+  "Priority": 0,
+  "Enabled": true,
+  "HotReload": false,
+  "RegisterCommands": false,
+  "CatalogId": "opendereth.unlimited-stat-augmentation-gems",
+  "TargetAceVersion": "ACE.Server 1.1 / .NET 10",
+  "DataImpact": "CharacterData",
+  "RemovalPolicy": "ChangesRemain"
+}
