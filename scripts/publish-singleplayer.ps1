@@ -117,7 +117,8 @@ foreach ($modProject in @(
     "ACE.SinglePlayer.Mods.ACEUniqueWeeniesProc",
     "ACE.SinglePlayer.Mods.HelloCommand",
     "ACE.SinglePlayer.Mods.SocietyTailoring",
-    "ACE.SinglePlayer.Mods.UnlimitedStatAugmentation"
+    "ACE.SinglePlayer.Mods.UnlimitedStatAugmentation",
+    "ACE.SinglePlayer.Mods.UnlimitedSkillSpecializations"
 )) {
     & (Join-Path $repoRoot "scripts\package-mod.ps1") `
         -ProjectDirectory (Join-Path $repoRoot "Source\$modProject") `

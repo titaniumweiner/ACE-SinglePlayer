@@ -1,13 +1,17 @@
 using System.Text.Json.Nodes;
 using System.IO.Compression;
+using System.Reflection.Emit;
 using System.Security.Cryptography;
 
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 using ACE.Entity.Enum;
 using ACE.Server.Command;
+using ACE.Server.Command.Handlers;
 using ACE.Server.Entity;
+using ACE.Server.Network;
 using ACE.Server.WorldObjects;
+using ACE.Server.WorldObjects.Entity;
 using ACE.SinglePlayer.Mods;
 
 using HarmonyLib;
@@ -42,7 +46,7 @@ public sealed class ModTests
     [TestMethod]
     public void CuratedCatalogIncludesCustomClothingBaseAsWarnedPreview()
     {
-        Assert.AreEqual(25, CuratedModCatalog.Entries.Count);
+        Assert.AreEqual(26, CuratedModCatalog.Entries.Count);
         var entry = CuratedModCatalog.Entries.Single(item => item.Id == "optimshi.custom-clothing-base");
         Assert.AreEqual("OptimShi", entry.Author);
         Assert.AreEqual(ModCatalogAvailability.Preview, entry.Availability);
@@ -144,6 +148,95 @@ public sealed class ModTests
         var remaining = Harmony.GetPatchInfo(safetyGetter);
         Assert.IsTrue(remaining is null || remaining.Postfixes.All(patch =>
             patch.owner != UnlimitedStatAugmentation.Mod.HarmonyId));
+    }
+
+    [TestMethod]
+    public void CuratedCatalogIncludesUnlimitedSkillSpecializationsAsWarnedPreview()
+    {
+        var entry = CuratedModCatalog.Entries.Single(item =>
+            item.Id == "opendereth.unlimited-skill-specializations");
+
+        Assert.AreEqual("Unlimited Skill Specializations", entry.Name);
+        Assert.AreEqual("OpenDereth", entry.Author);
+        Assert.AreEqual(ModCatalogAvailability.Preview, entry.Availability);
+        Assert.AreEqual(ModDataImpact.CharacterData, entry.DataImpact);
+        Assert.AreEqual(ModRemovalPolicy.ChangesRemain, entry.RemovalPolicy);
+        Assert.IsTrue(entry.Description.Contains("70", StringComparison.Ordinal));
+        CollectionAssert.Contains(entry.ConflictIds?.ToArray() ?? Array.Empty<string>(), "aquafir.quality-of-life");
+        Assert.IsTrue(entry.PreviewNotice.Contains("not yet been thoroughly tested", StringComparison.OrdinalIgnoreCase));
+        Assert.IsTrue(entry.PackageRelativePath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [TestMethod]
+    [DoNotParallelize]
+    public void UnlimitedSkillSpecializationsPatchTargetsCurrentAceSignatureAndCanBeRemoved()
+    {
+        var original = AccessTools.Method(typeof(SkillAlterationDevice),
+            nameof(SkillAlterationDevice.VerifyRequirements),
+            new[] { typeof(Player), typeof(CreatureSkill), typeof(ACE.DatLoader.Entity.SkillBase) });
+        Assert.IsNotNull(original);
+        var verifier = AccessTools.Method(typeof(DeveloperFixCommands),
+            nameof(DeveloperFixCommands.HandleVerifySkillCredits),
+            new[] { typeof(Session), typeof(string[]) });
+        Assert.IsNotNull(verifier);
+
+        var mod = new UnlimitedSkillSpecializations.Mod();
+        try
+        {
+            mod.Initialize();
+            var patchInfo = Harmony.GetPatchInfo(original);
+            Assert.IsNotNull(patchInfo);
+            Assert.IsTrue(patchInfo.Transpilers.Any(patch =>
+                patch.owner == UnlimitedSkillSpecializations.Mod.HarmonyId));
+            var verifierPatchInfo = Harmony.GetPatchInfo(verifier);
+            Assert.IsNotNull(verifierPatchInfo);
+            Assert.IsTrue(verifierPatchInfo.Transpilers.Any(patch =>
+                patch.owner == UnlimitedSkillSpecializations.Mod.HarmonyId));
+        }
+        finally
+        {
+            mod.Dispose();
+        }
+
+        var remaining = Harmony.GetPatchInfo(original);
+        Assert.IsTrue(remaining is null || remaining.Transpilers.All(patch =>
+            patch.owner != UnlimitedSkillSpecializations.Mod.HarmonyId));
+        var remainingVerifier = Harmony.GetPatchInfo(verifier);
+        Assert.IsTrue(remainingVerifier is null || remainingVerifier.Transpilers.All(patch =>
+            patch.owner != UnlimitedSkillSpecializations.Mod.HarmonyId));
+    }
+
+    [TestMethod]
+    public void UnlimitedSkillSpecializationsReplacesOnlyTheStockCapConstant()
+    {
+        var original = new[]
+        {
+            new CodeInstruction(OpCodes.Ldc_I4_S, (sbyte)69),
+            new CodeInstruction(OpCodes.Ldc_I4_S, (sbyte)70),
+            new CodeInstruction(OpCodes.Ldc_I4_S, (sbyte)71)
+        };
+
+        var rewritten = UnlimitedSkillSpecializations.SpecializationCapPatch
+            .RemoveSpecializedCreditCap(original).ToArray();
+
+        Assert.AreEqual(OpCodes.Ldc_I4_S, rewritten[0].opcode);
+        Assert.AreEqual((sbyte)69, rewritten[0].operand);
+        Assert.AreEqual(OpCodes.Ldc_I4, rewritten[1].opcode);
+        Assert.AreEqual(int.MaxValue, rewritten[1].operand);
+        Assert.AreEqual(OpCodes.Ldc_I4_S, rewritten[2].opcode);
+        Assert.AreEqual((sbyte)71, rewritten[2].operand);
+
+        var verifierInstructions = new[]
+        {
+            new CodeInstruction(OpCodes.Ldc_I4_S, (sbyte)70),
+            new CodeInstruction(OpCodes.Ldc_I4_1),
+            new CodeInstruction(OpCodes.Ldc_I4_S, (sbyte)70)
+        };
+        var rewrittenVerifier = UnlimitedSkillSpecializations.SpecializationCapPatch
+            .ReplaceStockCapConstants(verifierInstructions, expectedReplacements: 2);
+        Assert.AreEqual(int.MaxValue, rewrittenVerifier[0].operand);
+        Assert.AreEqual(OpCodes.Ldc_I4_1, rewrittenVerifier[1].opcode);
+        Assert.AreEqual(int.MaxValue, rewrittenVerifier[2].operand);
     }
 
     [TestMethod]
