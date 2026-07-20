@@ -6,9 +6,12 @@ using System.Security.Cryptography;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 using ACE.Entity.Enum;
+using ACE.Entity.Models;
+using ACE.Database.Models.World;
 using ACE.Server.Command;
 using ACE.Server.Command.Handlers;
 using ACE.Server.Entity;
+using ACE.Server.Factories;
 using ACE.Server.Network;
 using ACE.Server.WorldObjects;
 using ACE.Server.WorldObjects.Entity;
@@ -46,7 +49,7 @@ public sealed class ModTests
     [TestMethod]
     public void CuratedCatalogIncludesCustomClothingBaseAsWarnedPreview()
     {
-        Assert.AreEqual(26, CuratedModCatalog.Entries.Count);
+        Assert.AreEqual(27, CuratedModCatalog.Entries.Count);
         var entry = CuratedModCatalog.Entries.Single(item => item.Id == "optimshi.custom-clothing-base");
         Assert.AreEqual("OptimShi", entry.Author);
         Assert.AreEqual(ModCatalogAvailability.Preview, entry.Availability);
@@ -165,6 +168,134 @@ public sealed class ModTests
         CollectionAssert.Contains(entry.ConflictIds?.ToArray() ?? Array.Empty<string>(), "aquafir.quality-of-life");
         Assert.IsTrue(entry.PreviewNotice.Contains("not yet been thoroughly tested", StringComparison.OrdinalIgnoreCase));
         Assert.IsTrue(entry.PackageRelativePath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [TestMethod]
+    public void CuratedCatalogIncludesUniversalLootLuckAsWarnedPreview()
+    {
+        var entry = CuratedModCatalog.Entries.Single(item =>
+            item.Id == "opendereth.universal-loot-luck");
+
+        Assert.AreEqual("All-Tier Salvage & Loot Luck", entry.Name);
+        Assert.AreEqual("OpenDereth", entry.Author);
+        Assert.AreEqual(ModCatalogAvailability.Preview, entry.Availability);
+        Assert.AreEqual(ModDataImpact.CharacterData, entry.DataImpact);
+        Assert.AreEqual(ModRemovalPolicy.ChangesRemain, entry.RemovalPolicy);
+        Assert.IsTrue(entry.Description.Contains("material", StringComparison.OrdinalIgnoreCase));
+        CollectionAssert.Contains(entry.ConflictIds?.ToArray() ?? Array.Empty<string>(), "aquafir.expansion");
+        Assert.IsTrue(entry.PreviewNotice.Contains("not yet been thoroughly tested", StringComparison.OrdinalIgnoreCase));
+        Assert.IsTrue(entry.PackageRelativePath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [TestMethod]
+    public void UniversalLootLuckSettingsAndProfileAdjustmentAreBoundedAndNonMutating()
+    {
+        var source = new TreasureDeath
+        {
+            Id = 7,
+            TreasureType = 8,
+            Tier = 4,
+            LootQualityMod = 0.10f,
+            ItemChance = 40,
+            MagicItemChance = 70,
+            MundaneItemChance = 10,
+            ItemMinAmount = 1,
+            ItemMaxAmount = 2,
+            MagicItemMinAmount = 3,
+            MagicItemMaxAmount = 4,
+            MundaneItemMinAmount = 5,
+            MundaneItemMaxAmount = 6
+        };
+        var settings = new UniversalLootLuck.LootLuckSettings
+        {
+            LootQualityBonus = 0.25f,
+            GeneratedLootChanceMultiplier = 2.0
+        };
+
+        settings.Validate();
+        var adjusted = UniversalLootLuck.LootProfileAdjuster.CreateAdjusted(source, settings);
+
+        Assert.AreNotSame(source, adjusted);
+        Assert.AreEqual(0.10f, source.LootQualityMod);
+        Assert.AreEqual(40, source.ItemChance);
+        Assert.AreEqual(0.35f, adjusted.LootQualityMod, 0.0001f);
+        Assert.AreEqual(80, adjusted.ItemChance);
+        Assert.AreEqual(100, adjusted.MagicItemChance);
+        Assert.AreEqual(20, adjusted.MundaneItemChance);
+        Assert.AreEqual(source.ItemMinAmount, adjusted.ItemMinAmount);
+        Assert.AreEqual(source.MagicItemMaxAmount, adjusted.MagicItemMaxAmount);
+
+        Assert.ThrowsExactly<InvalidDataException>(() => new UniversalLootLuck.LootLuckSettings
+        {
+            LootQualityBonus = 0.96f
+        }.Validate());
+        Assert.ThrowsExactly<InvalidDataException>(() => new UniversalLootLuck.LootLuckSettings
+        {
+            TrophyDropRateMultiplier = double.PositiveInfinity
+        }.Validate());
+    }
+
+    [TestMethod]
+    public void UniversalLootLuckCombinesTierWeightsAndAdjustsRareDenominator()
+    {
+        var entries = new (uint materialId, float probability)[]
+        {
+            (10, 0.25f),
+            (20, 0.75f),
+            (10, 0.25f)
+        };
+
+        Assert.AreEqual((uint)10, UniversalLootLuck.UniversalMaterialSelector.RollWeightedMaterialId(entries, 0.0f));
+        Assert.AreEqual((uint)10, UniversalLootLuck.UniversalMaterialSelector.RollWeightedMaterialId(entries, 0.39f));
+        Assert.AreEqual((uint)20, UniversalLootLuck.UniversalMaterialSelector.RollWeightedMaterialId(entries, 0.50f));
+        Assert.AreEqual((uint)20, UniversalLootLuck.UniversalMaterialSelector.RollWeightedMaterialId(entries, 1.0f));
+        Assert.IsNull(UniversalLootLuck.UniversalMaterialSelector.RollWeightedMaterialId(Array.Empty<(uint, float)>(), 0.5f));
+
+        Assert.AreEqual(1300, UniversalLootLuck.RareDropRatePatch.CalculateAdjustedLuck(2500, 100, 2.0));
+        Assert.AreEqual(-2300, UniversalLootLuck.RareDropRatePatch.CalculateAdjustedLuck(2500, 100, 0.5));
+    }
+
+    [TestMethod]
+    [DoNotParallelize]
+    public void UniversalLootLuckTargetsPinnedAceSignaturesAndCanBeRemoved()
+    {
+        var loot = AccessTools.Method(typeof(LootGenerationFactory),
+            nameof(LootGenerationFactory.CreateRandomLootObjects), new[] { typeof(TreasureDeath) });
+        var material = AccessTools.Method(typeof(LootGenerationFactory), "GetMaterialType",
+            new[] { typeof(WorldObject), typeof(int) });
+        var trophies = AccessTools.Method(typeof(Creature), nameof(Creature.CreateListSelect),
+            new[] { typeof(List<PropertiesCreateList>) });
+        var rare = AccessTools.Method(typeof(LootGenerationFactory), nameof(LootGenerationFactory.TryCreateRare),
+            new[] { typeof(int) });
+        Assert.IsNotNull(loot);
+        Assert.IsNotNull(material);
+        Assert.IsNotNull(trophies);
+        Assert.IsNotNull(rare);
+
+        var targets = new[] { loot, material, trophies, rare };
+        var mod = new UniversalLootLuck.Mod();
+        try
+        {
+            mod.Initialize();
+            foreach (var target in targets)
+            {
+                var patchInfo = Harmony.GetPatchInfo(target);
+                Assert.IsNotNull(patchInfo, target.Name);
+                Assert.IsTrue(patchInfo.Prefixes.Any(patch =>
+                    patch.owner == UniversalLootLuck.Mod.HarmonyId), target.Name);
+            }
+        }
+        finally
+        {
+            mod.Dispose();
+        }
+
+        foreach (var target in targets)
+        {
+            var remaining = Harmony.GetPatchInfo(target);
+            Assert.IsTrue(remaining is null || remaining.Prefixes.All(patch =>
+                patch.owner != UniversalLootLuck.Mod.HarmonyId), target.Name);
+        }
     }
 
     [TestMethod]

@@ -20,6 +20,7 @@
     <ProjectReference Include="..\ACE.SinglePlayer.Mods.SocietyTailoring\ACE.SinglePlayer.Mods.SocietyTailoring.csproj" />
     <ProjectReference Include="..\ACE.SinglePlayer.Mods.UnlimitedStatAugmentation\ACE.SinglePlayer.Mods.UnlimitedStatAugmentation.csproj" />
     <ProjectReference Include="..\ACE.SinglePlayer.Mods.UnlimitedSkillSpecializations\ACE.SinglePlayer.Mods.UnlimitedSkillSpecializations.csproj" />
+    <ProjectReference Include="..\ACE.SinglePlayer.Mods.UniversalLootLuck\ACE.SinglePlayer.Mods.UniversalLootLuck.csproj" />
     <ProjectReference Include="..\ACE.SinglePlayer.TestHost\ACE.SinglePlayer.TestHost.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
 </Project>
