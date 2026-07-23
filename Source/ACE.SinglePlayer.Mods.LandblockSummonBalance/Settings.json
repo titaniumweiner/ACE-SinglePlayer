@@ -1,0 +1,17 @@
+{
+  "Zones": [
+    {
+      "Name": "Example Landblock - disabled until configured",
+      "Enabled": false,
+      "Priority": 0,
+      "MatchLocation": "Opponent",
+      "Landblocks": [],
+      "ExactCells": [],
+      "PhysicalDamageMultiplier": 0.5,
+      "SpellDamageMultiplier": 0.5,
+      "PhysicalAttackSkillMultiplier": 0.75,
+      "PhysicalDefenseSkillMultiplier": 0.75,
+      "DamageTakenMultiplier": 1.25
+    }
+  ]
+}

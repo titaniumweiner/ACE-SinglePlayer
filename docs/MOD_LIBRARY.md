@@ -6,7 +6,7 @@ OpenDereth includes a curated mod library. Open **Server Mods** from the launche
 
 The library inventories all 22 samples in [aquafir/ACE.BaseMod](https://github.com/aquafir/ACE.BaseMod/tree/master/Samples). The upstream `Meta.json` files contain placeholder descriptions, so OpenDereth's descriptions and safety policies are curated from the actual READMEs and source.
 
-`CriticalOverride` is curated for this repository's .NET 10 ACE build. `HelloCommand`, `SocietyTailoring`, **Expanded Cast on Strike**, **Unlimited Stat Augmentation Gems**, **Unlimited Skill Specializations**, and **All-Tier Salvage & Loot Luck** are installable **Preview** mods. Their checksum-verified packages build and pass automated registration/Harmony-target, packaging, and launcher tests, but they have not received thorough in-game testing. OptimShi's `CustomClothingBase` v1.11 is also an installable Preview. Its unmodified official .NET 8 package is pinned by SHA-256 and passed an isolated load test in the exact .NET 10 ACE mod container, but custom clothing behavior and saved-world compatibility are not thoroughly tested. The launcher repeats those warnings before installation. The other samples remain visible but are marked **Needs port**, **Experimental**, or **Not recommended** until they compile against this exact ACE version and pass suitable tests.
+`CriticalOverride` is curated for this repository's .NET 10 ACE build. `HelloCommand`, `SocietyTailoring`, **Expanded Cast on Strike**, **Unlimited Stat Augmentation Gems**, **Unlimited Skill Specializations**, **All-Tier Salvage & Loot Luck**, and **Three Imbues** are installable **Preview** mods. Their checksum-verified packages build and pass automated registration/Harmony-target, packaging, and launcher tests, but they have not received thorough in-game testing. OptimShi's `CustomClothingBase` v1.11 is also an installable Preview. Its unmodified official .NET 8 package is pinned by SHA-256 and passed an isolated load test in the exact .NET 10 ACE mod container, but custom clothing behavior and saved-world compatibility are not thoroughly tested. The launcher repeats those warnings before installation. The other samples remain visible but are marked **Needs port**, **Experimental**, or **Not recommended** until they compile against this exact ACE version and pass suitable tests.
 
 ### All-Tier Salvage & Loot Luck
 
@@ -15,6 +15,16 @@ This OpenDereth mod combines the normalized tier 1-6 material rows used by each 
 The default settings change only that material selection. `LootQualityBonus` starts at `0.0`, while generated-loot, trophy, and rare multipliers start at `1.0`, which means normal ACE behavior. Recipients can opt into each luck control independently. Trophy and rare multipliers combine with the server's existing settings instead of overwriting them, and all values are bounded and validated when the mod loads. The package README documents the exact ranges and warns that large loot-quality values affect every ACE roll that consumes `LootQualityMod`, including cantrips and ratings.
 
 Disabling the mod restores stock future rolls after restart. Materials and quality already generated on saved items remain. It conflicts with Aquafir's broad `Expansion` loot framework because both can alter the same generated-loot pipeline. The package is marked Preview until representative tier/material tables and multiplier combinations have been thoroughly tested in game.
+
+### Three Imbues
+
+This OpenDereth mod replaces only ACE's single-imbue recipe restriction with a maximum of three distinct standard salvage imbues. A compatible melee weapon can, for example, carry Armor Rending, Critical Strike, and Crippling Blow simultaneously. Duplicate effects are rejected, while stock item/material eligibility, the ten-tinker limit, workmanship, tinkering skills, success chances, salvage consumption, and failure-destruction behavior remain active.
+
+ACE persists the effects in `ImbuedEffect`, `ImbuedEffect2`, and `ImbuedEffect3`, and the mod combines those slots for weapon and equipped-defense checks. The classic client has only one imbue icon-underlay field, so its inventory icon may show only the latest imbue even though all three effects are active.
+
+Each effect is stored in one of ACE's persistent `ImbuedEffect`, `ImbuedEffect2`, and `ImbuedEffect3` properties. While the mod is enabled, weapon and equipped-defense calculations combine all ACE imbue slots. The setting may lower the maximum to one or two but cannot exceed the tested three-slot cap.
+
+Multi-imbued items are saved character data. Do not permanently remove the mod while characters own them: secondary effects remain in the database but stock ACE ignores those secondary slots until the mod is enabled again. It conflicts with Aquafir's broader `Tinkering` overhaul because both replace the same crafting restriction and additional-effect handling. Back up before testing; the package remains Preview until the full in-game item, salvage, appraisal, failure, restart, and mod-interaction matrix has been exercised.
 
 ### Unlimited Skill Specializations
 
@@ -47,22 +57,29 @@ The upstream repository currently has no `LICENSE` file. The official v1.11 bina
 - `ace-mod.json` at the ZIP root;
 - mod files under the ZIP's `mod/` directory;
 - `mod/Meta.json` and the manifest's entry DLL;
-- a matching `.zip.sha256` checksum file beside the ZIP.
+- a format-2 `integrity` section containing a SHA-256 hash for every file under `mod/`.
 
 The manifest format is:
 
 ```json
 {
-  "formatVersion": 1,
+  "formatVersion": 2,
   "id": "author.mod-id",
   "name": "Mod Name",
   "version": "1.0.0",
   "folderName": "ModAssemblyName",
-  "entryAssembly": "ModAssemblyName.dll"
+  "entryAssembly": "ModAssemblyName.dll",
+  "integrity": {
+    "algorithm": "SHA256",
+    "files": {
+      "mod/ModAssemblyName.dll": "64-CHARACTER SHA-256",
+      "mod/Meta.json": "64-CHARACTER SHA-256"
+    }
+  }
 }
 ```
 
-Importing validates identity, checksum, archive paths, size, required files, and ACE's folder/assembly naming rule. It cannot prove that arbitrary DLL code is compatible or safe. In particular, downloading an original Aquafir .NET 8 source folder and putting it in a ZIP does **not** port it to this .NET 10 ACE build. A developer must rebuild and test that source first. The launcher gives an additional warning when a selected package corresponds to a catalog entry that still says **Needs port**.
+Importing validates identity, every embedded file hash, archive paths, size, required files, and ACE's folder/assembly naming rule. Legacy format-1 ZIPs still require an adjacent `.zip.sha256` file. Integrity validation cannot prove that arbitrary DLL code is compatible or safe. In particular, downloading an original Aquafir .NET 8 source folder and putting it in a ZIP does **not** port it to this .NET 10 ACE build. A developer must rebuild and test that source first. The launcher gives an additional warning when a selected package corresponds to a catalog entry that still says **Needs port**.
 
 See [How to make and import an OpenDereth mod](MOD_AUTHOR_GUIDE.md) for a working project skeleton, metadata examples, the package helper, testing checklist, and import steps.
 

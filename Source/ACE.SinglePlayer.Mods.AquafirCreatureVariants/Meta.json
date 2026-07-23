@@ -1,0 +1,14 @@
+{
+  "Name": "Aquafir Creature Variants",
+  "Author": "Aquafir and OpenDereth",
+  "Description": "A reviewed OpenDereth adaptation of Aquafir's experimental ACE.BaseMod creature concepts. Randomly gives eligible monsters one or more stackable runtime variants with configurable chances and limits.",
+  "Version": "1.2.0-sp1",
+  "Priority": 0,
+  "Enabled": true,
+  "HotReload": false,
+  "RegisterCommands": false,
+  "CatalogId": "opendereth.aquafir-creature-variants",
+  "TargetAceVersion": "ACE.Server 1.1 / .NET 10",
+  "DataImpact": "SettingsOnly",
+  "RemovalPolicy": "Safe"
+}

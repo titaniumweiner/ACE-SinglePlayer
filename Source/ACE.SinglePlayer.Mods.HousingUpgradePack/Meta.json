@@ -1,0 +1,14 @@
+{
+  "Name": "Housing Upgrade Pack",
+  "Author": "OpenDereth",
+  "Description": "Expands housing storage and removes hook caps, with optional maintenance, mansion-rank, and house-purchase timer controls.",
+  "Version": "1.0.0-sp1",
+  "Priority": 0,
+  "Enabled": true,
+  "HotReload": false,
+  "RegisterCommands": false,
+  "CatalogId": "opendereth.housing-upgrade-pack",
+  "TargetAceVersion": "ACE.Server 1.1 / .NET 10",
+  "DataImpact": "WorldData",
+  "RemovalPolicy": "ChangesRemain"
+}

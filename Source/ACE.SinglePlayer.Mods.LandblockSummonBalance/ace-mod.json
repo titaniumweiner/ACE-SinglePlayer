@@ -1,0 +1,8 @@
+{
+  "formatVersion": 1,
+  "id": "opendereth.landblock-summon-balance",
+  "name": "Landblock Summon Balance",
+  "version": "1.0.0-sp1",
+  "folderName": "LandblockSummonBalance",
+  "entryAssembly": "LandblockSummonBalance.dll"
+}

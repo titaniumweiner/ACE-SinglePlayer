@@ -12,6 +12,13 @@ public sealed class ModPackageManifest
     public string Version { get; set; } = string.Empty;
     public string FolderName { get; set; } = string.Empty;
     public string EntryAssembly { get; set; } = string.Empty;
+    public ModPackageIntegrity? Integrity { get; set; }
+}
+
+public sealed class ModPackageIntegrity
+{
+    public string Algorithm { get; set; } = string.Empty;
+    public Dictionary<string, string> Files { get; set; } = new();
 }
 
 public sealed class ModPackageInstaller
@@ -27,12 +34,12 @@ public sealed class ModPackageInstaller
         if (!File.Exists(packagePath))
             throw new FileNotFoundException("The mod package is missing.", packagePath);
 
-        await VerifyHashSidecarAsync(packagePath, cancellationToken);
         using var archive = ZipFile.OpenRead(packagePath);
         ValidateArchiveSize(archive);
         var manifestEntry = FindManifest(archive);
         var manifest = await ReadManifestAsync(manifestEntry, cancellationToken);
         ValidateManifest(manifest, expectedCatalogId: null);
+        await VerifyPackageIntegrityAsync(packagePath, archive, manifest, cancellationToken);
         return manifest;
     }
 
@@ -47,7 +54,6 @@ public sealed class ModPackageInstaller
         if (!File.Exists(packagePath))
             throw new FileNotFoundException("The mod package is missing.", packagePath);
 
-        await VerifyHashSidecarAsync(packagePath, cancellationToken);
         Directory.CreateDirectory(modsDirectory);
         Directory.CreateDirectory(stagingRoot);
 
@@ -62,6 +68,7 @@ public sealed class ModPackageInstaller
             var manifestEntry = FindManifest(archive);
             var manifest = await ReadManifestAsync(manifestEntry, cancellationToken);
             ValidateManifest(manifest, expectedCatalogId);
+            await VerifyPackageIntegrityAsync(packagePath, archive, manifest, cancellationToken);
 
             var seenPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var entry in archive.Entries)
@@ -145,6 +152,74 @@ public sealed class ModPackageInstaller
             throw new InvalidDataException("The package checksum does not match. The mod was not installed.");
     }
 
+    private static async Task VerifyPackageIntegrityAsync(
+        string packagePath,
+        ZipArchive archive,
+        ModPackageManifest manifest,
+        CancellationToken cancellationToken)
+    {
+        if (manifest.FormatVersion == 1)
+        {
+            await VerifyHashSidecarAsync(packagePath, cancellationToken);
+            return;
+        }
+
+        await VerifyEmbeddedIntegrityAsync(archive, manifest, cancellationToken);
+
+        // A format-2 package is complete on its own. If a publisher also supplies a legacy
+        // sidecar, verify it rather than silently ignoring a bad external checksum.
+        if (File.Exists(packagePath + ".sha256"))
+            await VerifyHashSidecarAsync(packagePath, cancellationToken);
+    }
+
+    private static async Task VerifyEmbeddedIntegrityAsync(
+        ZipArchive archive,
+        ModPackageManifest manifest,
+        CancellationToken cancellationToken)
+    {
+        var integrity = manifest.Integrity
+            ?? throw new InvalidDataException("The package's embedded SHA-256 integrity manifest is missing.");
+        if (!string.Equals(integrity.Algorithm, "SHA256", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("The package integrity algorithm is not supported.");
+        if (integrity.Files is null || integrity.Files.Count == 0)
+            throw new InvalidDataException("The package integrity manifest contains no files.");
+
+        var expectedFiles = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in integrity.Files)
+        {
+            var normalized = NormalizeEntry(pair.Key);
+            if (!normalized.StartsWith("mod/", StringComparison.OrdinalIgnoreCase) || normalized.EndsWith('/'))
+                throw new InvalidDataException($"Invalid integrity-manifest path: {pair.Key}");
+            ValidateRelativePath(normalized[4..]);
+            if (pair.Value is null || pair.Value.Length != 64 || pair.Value.Any(character => !Uri.IsHexDigit(character)))
+                throw new InvalidDataException($"Invalid SHA-256 value for {pair.Key}.");
+            if (!expectedFiles.TryAdd(normalized, pair.Value))
+                throw new InvalidDataException($"Duplicate integrity-manifest path: {pair.Key}");
+        }
+
+        var archivePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in archive.Entries)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var normalized = NormalizeEntry(entry.FullName);
+            if (string.Equals(normalized, "ace-mod.json", StringComparison.OrdinalIgnoreCase) ||
+                normalized.EndsWith('/'))
+                continue;
+            if (!archivePaths.Add(normalized))
+                throw new InvalidDataException($"Duplicate package path: {entry.FullName}");
+            if (!expectedFiles.Remove(normalized, out var expectedHash))
+                throw new InvalidDataException($"The package contains an unhashed file: {entry.FullName}");
+
+            await using var stream = entry.Open();
+            var actualHash = Convert.ToHexString(await SHA256.HashDataAsync(stream, cancellationToken));
+            if (!string.Equals(actualHash, expectedHash, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException($"The embedded checksum for {entry.FullName} does not match.");
+        }
+
+        if (expectedFiles.Count > 0)
+            throw new InvalidDataException($"The package is missing an integrity-listed file: {expectedFiles.Keys.First()}");
+    }
+
     private static async Task<ModPackageManifest> ReadManifestAsync(ZipArchiveEntry entry, CancellationToken cancellationToken)
     {
         await using var stream = entry.Open();
@@ -169,7 +244,7 @@ public sealed class ModPackageInstaller
 
     private static void ValidateManifest(ModPackageManifest manifest, string? expectedCatalogId)
     {
-        if (manifest.FormatVersion != 1)
+        if (manifest.FormatVersion is not (1 or 2))
             throw new InvalidDataException("The package manifest version is not supported.");
         if (string.IsNullOrWhiteSpace(manifest.Id))
             throw new InvalidDataException("The package identity is missing.");

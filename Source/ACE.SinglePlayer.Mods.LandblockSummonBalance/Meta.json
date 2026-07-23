@@ -1,0 +1,14 @@
+{
+  "Name": "Landblock Summon Balance",
+  "Author": "OpenDereth",
+  "Description": "Applies configurable, temporary combat penalties or bonuses to player-owned summons in specifically tagged landblocks without changing weenies or world data.",
+  "Version": "1.0.0-sp1",
+  "Priority": 0,
+  "Enabled": true,
+  "HotReload": false,
+  "RegisterCommands": false,
+  "CatalogId": "opendereth.landblock-summon-balance",
+  "TargetAceVersion": "ACE.Server 1.1 / .NET 10",
+  "DataImpact": "SettingsOnly",
+  "RemovalPolicy": "Safe"
+}

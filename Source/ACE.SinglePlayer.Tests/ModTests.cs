@@ -1,4 +1,6 @@
 using System.Text.Json.Nodes;
+using System.Text.Json;
+using System.Text;
 using System.IO.Compression;
 using System.Reflection.Emit;
 using System.Security.Cryptography;
@@ -6,12 +8,14 @@ using System.Security.Cryptography;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 using ACE.Entity.Enum;
+using ACE.Entity.Enum.Properties;
 using ACE.Entity.Models;
 using ACE.Database.Models.World;
 using ACE.Server.Command;
 using ACE.Server.Command.Handlers;
 using ACE.Server.Entity;
 using ACE.Server.Factories;
+using ACE.Server.Managers;
 using ACE.Server.Network;
 using ACE.Server.WorldObjects;
 using ACE.Server.WorldObjects.Entity;
@@ -49,7 +53,7 @@ public sealed class ModTests
     [TestMethod]
     public void CuratedCatalogIncludesCustomClothingBaseAsWarnedPreview()
     {
-        Assert.AreEqual(27, CuratedModCatalog.Entries.Count);
+        Assert.AreEqual(31, CuratedModCatalog.Entries.Count);
         var entry = CuratedModCatalog.Entries.Single(item => item.Id == "optimshi.custom-clothing-base");
         Assert.AreEqual("OptimShi", entry.Author);
         Assert.AreEqual(ModCatalogAvailability.Preview, entry.Availability);
@@ -185,6 +189,695 @@ public sealed class ModTests
         CollectionAssert.Contains(entry.ConflictIds?.ToArray() ?? Array.Empty<string>(), "aquafir.expansion");
         Assert.IsTrue(entry.PreviewNotice.Contains("not yet been thoroughly tested", StringComparison.OrdinalIgnoreCase));
         Assert.IsTrue(entry.PackageRelativePath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [TestMethod]
+    public void CuratedCatalogIncludesThreeImbuesAsWarnedPreview()
+    {
+        var entry = CuratedModCatalog.Entries.Single(item => item.Id == "opendereth.three-imbues");
+
+        Assert.AreEqual("Three Imbues", entry.Name);
+        Assert.AreEqual(ModCatalogAvailability.Preview, entry.Availability);
+        Assert.AreEqual(ModDataImpact.CharacterData, entry.DataImpact);
+        Assert.AreEqual(ModRemovalPolicy.DoNotRemove, entry.RemovalPolicy);
+        Assert.IsTrue(entry.Description.Contains("three", StringComparison.OrdinalIgnoreCase));
+        CollectionAssert.Contains(entry.ConflictIds?.ToArray() ?? Array.Empty<string>(), "aquafir.tinkering");
+        Assert.IsTrue(entry.PreviewNotice.Contains("not yet been thoroughly tested", StringComparison.OrdinalIgnoreCase));
+        Assert.IsTrue(entry.PackageRelativePath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [TestMethod]
+    public void ThreeImbuesMapsMaterialsCountsDistinctEffectsAndBoundsSettings()
+    {
+        Assert.IsTrue(MultiImbue.MultiImbueRules.TryGetCraftedEffect(
+            MaterialType.Sunstone, out var armorRending));
+        Assert.AreEqual(ImbuedEffectType.ArmorRending, armorRending);
+        Assert.IsTrue(MultiImbue.MultiImbueRules.TryGetCraftedEffect(
+            MaterialType.BlackOpal, out var criticalStrike));
+        Assert.AreEqual(ImbuedEffectType.CriticalStrike, criticalStrike);
+        Assert.IsTrue(MultiImbue.MultiImbueRules.TryGetCraftedEffect(
+            MaterialType.FireOpal, out var cripplingBlow));
+        Assert.AreEqual(ImbuedEffectType.CripplingBlow, cripplingBlow);
+        Assert.IsFalse(MultiImbue.MultiImbueRules.TryGetCraftedEffect(
+            MaterialType.Iron, out _));
+
+        var combined = MultiImbue.MultiImbueRules.GetCombinedEffects(new int?[]
+        {
+            (int)armorRending,
+            (int)criticalStrike,
+            (int)cripplingBlow,
+            (int)criticalStrike,
+            null
+        });
+        Assert.AreEqual(3, MultiImbue.MultiImbueRules.CountImbues(combined),
+            "A duplicate bit in another ACE slot must not consume a fourth imbue.");
+        Assert.IsTrue(combined.HasFlag(ImbuedEffectType.ArmorRending));
+        Assert.IsTrue(combined.HasFlag(ImbuedEffectType.CriticalStrike));
+        Assert.IsTrue(combined.HasFlag(ImbuedEffectType.CripplingBlow));
+
+        new MultiImbue.MultiImbueSettings { MaximumImbues = 1 }.Validate();
+        new MultiImbue.MultiImbueSettings { MaximumImbues = 3 }.Validate();
+        Assert.ThrowsExactly<InvalidDataException>(() =>
+            new MultiImbue.MultiImbueSettings { MaximumImbues = 0 }.Validate());
+        Assert.ThrowsExactly<InvalidDataException>(() =>
+            new MultiImbue.MultiImbueSettings { MaximumImbues = 4 }.Validate());
+
+        var recipe = new Recipe
+        {
+            RecipeMod = new List<RecipeMod>
+            {
+                new() { ExecutesOnSuccess = true, DataId = 0x10001234 },
+                new() { ExecutesOnSuccess = false, DataId = 0x10005678 }
+            }
+        };
+        Assert.IsTrue(MultiImbue.MultiImbueRules.IsSuccessfulRecipeMutation(recipe, 0x10001234));
+        Assert.IsFalse(MultiImbue.MultiImbueRules.IsSuccessfulRecipeMutation(recipe, 0x10005678),
+            "A failed imbue's mutation data must never be persisted as a successful secondary effect.");
+    }
+
+    [TestMethod]
+    public void ThreeImbuesStoresSuccessfulEffectsInSeparatePersistentSlots()
+    {
+        var weapon = new MeleeWeapon(new Biota
+        {
+            Id = 0x7FFFFFF0,
+            WeenieClassId = 1,
+            WeenieType = WeenieType.MeleeWeapon,
+            PropertiesInt = new Dictionary<PropertyInt, int>
+            {
+                [PropertyInt.ImbuedEffect] = (int)ImbuedEffectType.ArmorRending
+            }
+        });
+
+        var second = new MultiImbue.ImbueMutationPatch.PendingAdditionalImbue(
+            weapon, ImbuedEffectType.CriticalStrike, weapon.GetProperty(PropertyInt.ImbuedEffect));
+        weapon.SetProperty(PropertyInt.ImbuedEffect, (int)ImbuedEffectType.CriticalStrike);
+        second.Complete(true);
+
+        Assert.AreEqual((int)ImbuedEffectType.ArmorRending,
+            weapon.GetProperty(PropertyInt.ImbuedEffect));
+        Assert.AreEqual((int)ImbuedEffectType.CriticalStrike,
+            weapon.GetProperty(PropertyInt.ImbuedEffect2));
+
+        var third = new MultiImbue.ImbueMutationPatch.PendingAdditionalImbue(
+            weapon, ImbuedEffectType.CripplingBlow, weapon.GetProperty(PropertyInt.ImbuedEffect));
+        weapon.SetProperty(PropertyInt.ImbuedEffect, (int)ImbuedEffectType.CripplingBlow);
+        third.Complete(true);
+
+        Assert.AreEqual((int)ImbuedEffectType.CripplingBlow,
+            weapon.GetProperty(PropertyInt.ImbuedEffect3));
+        Assert.AreEqual(3, MultiImbue.MultiImbueRules.CountImbues(weapon));
+        Assert.IsNull(MultiImbue.MultiImbueRules.FindFirstWritableSlot(weapon));
+
+        var failedWeapon = new MeleeWeapon(new Biota
+        {
+            Id = 0x7FFFFFF1,
+            WeenieClassId = 2,
+            WeenieType = WeenieType.MeleeWeapon,
+            PropertiesInt = new Dictionary<PropertyInt, int>
+            {
+                [PropertyInt.ImbuedEffect] = (int)ImbuedEffectType.ArmorRending
+            }
+        });
+        var failed = new MultiImbue.ImbueMutationPatch.PendingAdditionalImbue(
+            failedWeapon, ImbuedEffectType.CriticalStrike,
+            failedWeapon.GetProperty(PropertyInt.ImbuedEffect));
+        failedWeapon.SetProperty(PropertyInt.ImbuedEffect, (int)ImbuedEffectType.CriticalStrike);
+        failed.Complete(false);
+
+        Assert.AreEqual((int)ImbuedEffectType.ArmorRending,
+            failedWeapon.GetProperty(PropertyInt.ImbuedEffect));
+        Assert.IsNull(failedWeapon.GetProperty(PropertyInt.ImbuedEffect2));
+    }
+
+    [TestMethod]
+    [DoNotParallelize]
+    public void ThreeImbuesTargetsPinnedAceSignaturesAndCanBeRemoved()
+    {
+        var targets = new[]
+        {
+            AccessTools.Method(typeof(RecipeManager), nameof(RecipeManager.VerifyRequirements),
+                new[] { typeof(Recipe), typeof(Player), typeof(WorldObject), typeof(WorldObject) }),
+            AccessTools.Method(typeof(RecipeManager), nameof(RecipeManager.TryMutate),
+                new[]
+                {
+                    typeof(Player), typeof(WorldObject), typeof(WorldObject), typeof(Recipe), typeof(uint),
+                    typeof(HashSet<uint>)
+                }),
+            AccessTools.Method(typeof(WorldObject), nameof(WorldObject.HasImbuedEffect),
+                new[] { typeof(ImbuedEffectType) }),
+            AccessTools.Method(typeof(Creature), nameof(Creature.GetDefenseImbues),
+                new[] { typeof(ImbuedEffectType) })
+        };
+        Assert.IsTrue(targets.All(target => target is not null));
+
+        var mod = new MultiImbue.Mod();
+        try
+        {
+            mod.Initialize();
+            foreach (var target in targets)
+            {
+                var patchInfo = Harmony.GetPatchInfo(target!);
+                Assert.IsNotNull(patchInfo, target!.Name);
+                Assert.IsTrue(patchInfo.Owners.Contains(MultiImbue.Mod.HarmonyId), target.Name);
+            }
+        }
+        finally
+        {
+            mod.Dispose();
+        }
+
+        foreach (var target in targets)
+        {
+            var patchInfo = Harmony.GetPatchInfo(target!);
+            Assert.IsTrue(patchInfo is null || !patchInfo.Owners.Contains(MultiImbue.Mod.HarmonyId),
+                target!.Name);
+        }
+    }
+
+    [TestMethod]
+    public void CuratedCatalogIncludesHousingUpgradePackAsWarnedPreview()
+    {
+        Assert.AreEqual(31, CuratedModCatalog.Entries.Count);
+        var entry = CuratedModCatalog.Entries.Single(item =>
+            item.Id == "opendereth.housing-upgrade-pack");
+
+        Assert.AreEqual("Housing Upgrade Pack", entry.Name);
+        Assert.AreEqual("OpenDereth", entry.Author);
+        Assert.AreEqual(ModCatalogAvailability.Preview, entry.Availability);
+        Assert.AreEqual(ModDataImpact.WorldData, entry.DataImpact);
+        Assert.AreEqual(ModRemovalPolicy.ChangesRemain, entry.RemovalPolicy);
+        Assert.IsTrue(entry.Description.Contains("Mansion", StringComparison.Ordinal));
+        Assert.IsTrue(entry.Details.Contains("15-day", StringComparison.Ordinal));
+        Assert.IsTrue(entry.PreviewNotice.Contains("not yet been thoroughly tested", StringComparison.OrdinalIgnoreCase));
+        Assert.IsTrue(entry.PackageRelativePath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [TestMethod]
+    public void HousingUpgradeSettingsProvideBoundedProgressiveCapacities()
+    {
+        var settings = new HousingUpgradePack.HousingUpgradeSettings();
+        settings.Validate();
+
+        Assert.AreEqual((byte?)150, HousingUpgradePack.HousingCapacityResolver.ResolveItemCapacity(
+            HouseType.Apartment, 120, settings));
+        Assert.AreEqual((byte?)180, HousingUpgradePack.HousingCapacityResolver.ResolveItemCapacity(
+            HouseType.Cottage, 120, settings));
+        Assert.AreEqual((byte?)220, HousingUpgradePack.HousingCapacityResolver.ResolveItemCapacity(
+            HouseType.Villa, 120, settings));
+        Assert.AreEqual((byte?)255, HousingUpgradePack.HousingCapacityResolver.ResolveItemCapacity(
+            HouseType.Mansion, 120, settings));
+
+        Assert.AreEqual((byte?)12, HousingUpgradePack.HousingCapacityResolver.ResolvePackCapacity(
+            HouseType.Apartment, 10, settings));
+        Assert.AreEqual((byte?)15, HousingUpgradePack.HousingCapacityResolver.ResolvePackCapacity(
+            HouseType.Cottage, 10, settings));
+        Assert.AreEqual((byte?)20, HousingUpgradePack.HousingCapacityResolver.ResolvePackCapacity(
+            HouseType.Villa, 10, settings));
+        Assert.AreEqual((byte?)25, HousingUpgradePack.HousingCapacityResolver.ResolvePackCapacity(
+            HouseType.Mansion, 10, settings));
+
+        Assert.AreEqual((byte?)240, HousingUpgradePack.HousingCapacityResolver.ResolveItemCapacity(
+            HouseType.Cottage, 240, settings), "A larger world-content capacity must not be reduced.");
+        Assert.AreEqual((byte?)120, HousingUpgradePack.HousingCapacityResolver.ResolveItemCapacity(
+            HouseType.Undef, 120, settings), "Non-housing storage must not change.");
+
+        settings.IncreaseStorageCapacity = false;
+        Assert.AreEqual((byte?)120, HousingUpgradePack.HousingCapacityResolver.ResolveItemCapacity(
+            HouseType.Mansion, 120, settings));
+
+        Assert.ThrowsExactly<InvalidDataException>(() => new HousingUpgradePack.HousingUpgradeSettings
+        {
+            Apartment = new HousingUpgradePack.HousingCapacitySettings(256, 12)
+        }.Validate());
+        Assert.ThrowsExactly<InvalidDataException>(() => new HousingUpgradePack.HousingUpgradeSettings
+        {
+            Villa = new HousingUpgradePack.HousingCapacitySettings(220, -1)
+        }.Validate());
+    }
+
+    [TestMethod]
+    public void HousingUpgradeOptionsOverrideOnlyTheirExactAceProperties()
+    {
+        var settings = new HousingUpgradePack.HousingUpgradeSettings
+        {
+            RemoveHookLimits = true,
+            RemoveRentAndMaintenance = true,
+            RemoveMansionAllegianceRankRequirement = true,
+            RemoveHousePurchaseTimers = true
+        };
+        var enabled = new Property<bool>(true, "stock description");
+
+        Assert.IsFalse(HousingUpgradePack.HousingPropertyOverrides.ApplyBool(
+            "house_hook_limit", enabled, settings).Item);
+        Assert.IsFalse(HousingUpgradePack.HousingPropertyOverrides.ApplyBool(
+            "house_hookgroup_limit", enabled, settings).Item);
+        Assert.IsFalse(HousingUpgradePack.HousingPropertyOverrides.ApplyBool(
+            "house_rent_enabled", enabled, settings).Item);
+        Assert.IsFalse(HousingUpgradePack.HousingPropertyOverrides.ApplyBool(
+            "house_15day_account", enabled, settings).Item);
+        Assert.IsFalse(HousingUpgradePack.HousingPropertyOverrides.ApplyBool(
+            "house_30day_cooldown", enabled, settings).Item);
+        Assert.IsTrue(HousingUpgradePack.HousingPropertyOverrides.ApplyBool(
+            "house_purchase_requirements", enabled, settings).Item);
+        Assert.AreEqual("stock description", HousingUpgradePack.HousingPropertyOverrides.ApplyBool(
+            "house_rent_enabled", enabled, settings).Description);
+
+        var rank = new Property<long>(6, "mansion rank");
+        Assert.AreEqual(0L, HousingUpgradePack.HousingPropertyOverrides.ApplyLong(
+            "mansion_min_rank", rank, settings).Item);
+        Assert.AreEqual(6L, HousingUpgradePack.HousingPropertyOverrides.ApplyLong(
+            "unrelated_long", rank, settings).Item);
+
+        var defaults = new HousingUpgradePack.HousingUpgradeSettings();
+        Assert.IsTrue(HousingUpgradePack.HousingPropertyOverrides.ApplyBool(
+            "house_rent_enabled", enabled, defaults).Item);
+        Assert.AreEqual(6L, HousingUpgradePack.HousingPropertyOverrides.ApplyLong(
+            "mansion_min_rank", rank, defaults).Item);
+    }
+
+    [TestMethod]
+    [DoNotParallelize]
+    public void HousingUpgradePackTargetsPinnedAcePropertiesAndCanBeRemoved()
+    {
+        var itemCapacity = AccessTools.PropertyGetter(typeof(WorldObject), nameof(WorldObject.ItemCapacity));
+        var packCapacity = AccessTools.PropertyGetter(typeof(WorldObject), nameof(WorldObject.ContainerCapacity));
+        var boolProperty = AccessTools.Method(typeof(PropertyManager), nameof(PropertyManager.GetBool),
+            new[] { typeof(string), typeof(bool), typeof(bool) });
+        var longProperty = AccessTools.Method(typeof(PropertyManager), nameof(PropertyManager.GetLong),
+            new[] { typeof(string), typeof(long), typeof(bool) });
+
+        Assert.IsNotNull(itemCapacity);
+        Assert.IsNotNull(packCapacity);
+        Assert.IsNotNull(boolProperty);
+        Assert.IsNotNull(longProperty);
+
+        var targets = new[] { itemCapacity, packCapacity, boolProperty, longProperty };
+        var mod = new HousingUpgradePack.Mod();
+        try
+        {
+            mod.Initialize();
+            foreach (var target in targets)
+            {
+                var patchInfo = Harmony.GetPatchInfo(target);
+                Assert.IsNotNull(patchInfo, target.Name);
+                Assert.IsTrue(patchInfo.Postfixes.Any(patch =>
+                    patch.owner == HousingUpgradePack.Mod.HarmonyId), target.Name);
+            }
+        }
+        finally
+        {
+            mod.Dispose();
+        }
+
+        foreach (var target in targets)
+        {
+            var remaining = Harmony.GetPatchInfo(target);
+            Assert.IsTrue(remaining is null || remaining.Postfixes.All(patch =>
+                patch.owner != HousingUpgradePack.Mod.HarmonyId), target.Name);
+        }
+    }
+
+    [TestMethod]
+    public void CuratedCatalogIncludesLandblockSummonBalanceAsWarnedPreview()
+    {
+        var entry = CuratedModCatalog.Entries.Single(item =>
+            item.Id == "opendereth.landblock-summon-balance");
+
+        Assert.AreEqual("Landblock Summon Balance", entry.Name);
+        Assert.AreEqual("OpenDereth", entry.Author);
+        Assert.AreEqual(ModCatalogAvailability.Preview, entry.Availability);
+        Assert.AreEqual(ModDataImpact.SettingsOnly, entry.DataImpact);
+        Assert.AreEqual(ModRemovalPolicy.Safe, entry.RemovalPolicy);
+        Assert.IsTrue(entry.Description.Contains("landblock", StringComparison.OrdinalIgnoreCase));
+        Assert.IsTrue(entry.PreviewNotice.Contains("not yet been thoroughly tested", StringComparison.OrdinalIgnoreCase));
+        Assert.IsTrue(entry.PackageRelativePath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [TestMethod]
+    public void LandblockSummonBalanceResolvesOpponentZonesAndExactCellOverrides()
+    {
+        var settings = new LandblockSummonBalance.LandblockSummonSettings
+        {
+            Zones = new()
+            {
+                new LandblockSummonBalance.SummonBalanceZone
+                {
+                    Name = "Whole landblock",
+                    Enabled = true,
+                    Priority = 100,
+                    MatchLocation = LandblockSummonBalance.ZoneMatchLocation.Opponent,
+                    Landblocks = new() { "0xA9B4" },
+                    PhysicalDamageMultiplier = 0.5
+                },
+                new LandblockSummonBalance.SummonBalanceZone
+                {
+                    Name = "Exact room",
+                    Enabled = true,
+                    Priority = -100,
+                    MatchLocation = LandblockSummonBalance.ZoneMatchLocation.Opponent,
+                    ExactCells = new() { "0xA9B4012F" },
+                    PhysicalDamageMultiplier = 0.25
+                },
+                new LandblockSummonBalance.SummonBalanceZone
+                {
+                    Name = "Summon location",
+                    Enabled = true,
+                    Priority = 200,
+                    MatchLocation = LandblockSummonBalance.ZoneMatchLocation.Summon,
+                    Landblocks = new() { "0xC0DE" },
+                    PhysicalDamageMultiplier = 0.1
+                }
+            }
+        }.Compile();
+
+        Assert.AreEqual("Whole landblock", settings.Resolve(0x11110001, 0xA9B40020)?.Name);
+        Assert.AreEqual("Exact room", settings.Resolve(0x11110001, 0xA9B4012F)?.Name,
+            "An exact cell should win over a higher-priority whole-landblock rule.");
+        Assert.AreEqual("Summon location", settings.Resolve(0xC0DE0001, 0x11110001)?.Name);
+        Assert.IsNull(settings.Resolve(0x11110001, 0x22220001));
+    }
+
+    [TestMethod]
+    public void LandblockSummonBalanceValidatesIdsAndBoundsScaling()
+    {
+        Assert.AreEqual(40.0f, LandblockSummonBalance.SummonBalanceResolver.ScaleDamage(100.0f, 0.4), 0.001f);
+        Assert.AreEqual((uint)225, LandblockSummonBalance.SummonBalanceResolver.ScaleSkill(300, 0.75));
+
+        Assert.ThrowsExactly<InvalidDataException>(() => new LandblockSummonBalance.LandblockSummonSettings
+        {
+            Zones = new()
+            {
+                new LandblockSummonBalance.SummonBalanceZone
+                {
+                    Name = "Bad ID",
+                    Landblocks = new() { "A9B" }
+                }
+            }
+        }.Compile());
+        Assert.ThrowsExactly<InvalidDataException>(() => new LandblockSummonBalance.LandblockSummonSettings
+        {
+            Zones = new()
+            {
+                new LandblockSummonBalance.SummonBalanceZone
+                {
+                    Name = "Bad multiplier",
+                    Landblocks = new() { "A9B4" },
+                    PhysicalDamageMultiplier = 10.01
+                }
+            }
+        }.Compile());
+        Assert.ThrowsExactly<InvalidDataException>(() => new LandblockSummonBalance.LandblockSummonSettings
+        {
+            Zones = new()
+            {
+                new LandblockSummonBalance.SummonBalanceZone
+                {
+                    Name = "Enabled but empty"
+                }
+            }
+        }.Compile());
+    }
+
+    [TestMethod]
+    [DoNotParallelize]
+    public void LandblockSummonBalanceTargetsPinnedAceSignaturesAndCanBeRemoved()
+    {
+        var physicalDamage = AccessTools.Method(typeof(DamageEvent), "DoCalculateDamage",
+            new[] { typeof(Creature), typeof(Creature), typeof(WorldObject) });
+        var physicalSkill = AccessTools.Method(typeof(DamageEvent), nameof(DamageEvent.GetEvadeChance),
+            new[] { typeof(Creature), typeof(Creature) });
+        var spellDamage = AccessTools.Method(typeof(SpellProjectile), nameof(SpellProjectile.CalculateDamage),
+            new[] { typeof(WorldObject), typeof(Creature), typeof(bool).MakeByRefType(),
+                typeof(bool).MakeByRefType(), typeof(bool).MakeByRefType() });
+        Assert.IsNotNull(physicalDamage);
+        Assert.IsNotNull(physicalSkill);
+        Assert.IsNotNull(spellDamage);
+
+        var targets = new[] { physicalDamage, physicalSkill, spellDamage };
+        var mod = new LandblockSummonBalance.Mod();
+        try
+        {
+            mod.Initialize();
+            foreach (var target in targets)
+            {
+                var patchInfo = Harmony.GetPatchInfo(target);
+                Assert.IsNotNull(patchInfo, target.Name);
+                Assert.IsTrue(patchInfo.Postfixes.Any(patch =>
+                    patch.owner == LandblockSummonBalance.Mod.HarmonyId), target.Name);
+            }
+
+            Assert.AreEqual(1, CommandManager.GetCommandByName("summonbalance").Count());
+        }
+        finally
+        {
+            mod.Dispose();
+        }
+
+        foreach (var target in targets)
+        {
+            var remaining = Harmony.GetPatchInfo(target);
+            Assert.IsTrue(remaining is null || remaining.Postfixes.All(patch =>
+                patch.owner != LandblockSummonBalance.Mod.HarmonyId), target.Name);
+        }
+        Assert.AreEqual(0, CommandManager.GetCommandByName("summonbalance").Count());
+    }
+
+    [TestMethod]
+    public void CuratedCatalogIncludesAquafirCreatureVariantsAsWarnedPreview()
+    {
+        var entry = CuratedModCatalog.Entries.Single(item =>
+            item.Id == "opendereth.aquafir-creature-variants");
+
+        Assert.AreEqual("Aquafir Creature Variants", entry.Name);
+        Assert.AreEqual("Aquafir and OpenDereth", entry.Author);
+        Assert.AreEqual(ModCatalogAvailability.Preview, entry.Availability);
+        Assert.AreEqual(ModDataImpact.SettingsOnly, entry.DataImpact);
+        Assert.AreEqual(ModRemovalPolicy.Safe, entry.RemovalPolicy);
+        Assert.IsTrue(entry.SourceUrl.Contains("aquafir/ACE.BaseMod", StringComparison.Ordinal));
+        Assert.IsTrue(entry.Description.Contains("eighteen", StringComparison.OrdinalIgnoreCase));
+        Assert.IsTrue(entry.Details.Contains("Rogue", StringComparison.Ordinal));
+        Assert.IsTrue(entry.Details.Contains("Stunner", StringComparison.Ordinal));
+        CollectionAssert.Contains(entry.ConflictIds?.ToArray() ?? Array.Empty<string>(), "aquafir.expansion");
+        Assert.IsTrue(entry.PreviewNotice.Contains("not yet been thoroughly tested", StringComparison.OrdinalIgnoreCase));
+        Assert.IsTrue(entry.PackageRelativePath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [TestMethod]
+    public void AquafirCreatureVariantSettingsValidateAndSelectPredictably()
+    {
+        var defaults = new AquafirCreatureVariants.CreatureVariantSettings();
+        Assert.AreEqual(18, Enum.GetValues<AquafirCreatureVariants.CreatureVariantType>().Length);
+        Assert.AreEqual(0.50, defaults.AssignmentChance, 0.0001);
+        Assert.IsTrue(defaults.AllowVariantStacking);
+        Assert.AreEqual(0.50, defaults.AdditionalVariantChance, 0.0001);
+        Assert.AreEqual(3, defaults.MaximumVariantsPerCreature);
+        Assert.AreEqual(18, defaults.Compile().WeightedTraits.Count);
+        foreach (var advanced in new[]
+                 {
+                     AquafirCreatureVariants.CreatureVariantType.Rogue,
+                     AquafirCreatureVariants.CreatureVariantType.Horde,
+                     AquafirCreatureVariants.CreatureVariantType.Puppeteer,
+                     AquafirCreatureVariants.CreatureVariantType.Boss,
+                     AquafirCreatureVariants.CreatureVariantType.Tank,
+                     AquafirCreatureVariants.CreatureVariantType.Stunner
+                 })
+            Assert.IsTrue(defaults.TraitWeights[advanced] > 0.0, $"{advanced} must be available randomly by default.");
+
+        var settings = new AquafirCreatureVariants.CreatureVariantSettings
+        {
+            AssignmentChance = 0.25,
+            MinimumLevel = 10,
+            MaximumLevel = 100,
+            ExcludedWeenieClassIds = new() { 99 },
+            ForcedTraitsByWeenieClassId = new()
+            {
+                ["1234"] = AquafirCreatureVariants.CreatureVariantType.Shielded
+            },
+            TraitWeights = new()
+            {
+                [AquafirCreatureVariants.CreatureVariantType.Accurate] = 1.0,
+                [AquafirCreatureVariants.CreatureVariantType.Vampire] = 3.0
+            }
+        }.Compile();
+
+        Assert.IsTrue(settings.IsEligible(100, 10));
+        Assert.IsFalse(settings.IsEligible(100, 9));
+        Assert.IsFalse(settings.IsEligible(99, 50));
+        Assert.AreEqual(AquafirCreatureVariants.CreatureVariantType.Shielded,
+            settings.SelectTrait(1234, 0.99, 0.99));
+        Assert.IsNull(settings.SelectTrait(100, 0.25, 0.0));
+        Assert.AreEqual(AquafirCreatureVariants.CreatureVariantType.Accurate,
+            settings.SelectTrait(100, 0.10, 0.0));
+        Assert.AreEqual(AquafirCreatureVariants.CreatureVariantType.Vampire,
+            settings.SelectTrait(100, 0.10, 0.50));
+        CollectionAssert.AreEqual(
+            new[]
+            {
+                AquafirCreatureVariants.CreatureVariantType.Accurate,
+                AquafirCreatureVariants.CreatureVariantType.Vampire
+            },
+            settings.SelectTraits(100, 0.10, new[] { 0.0, 0.0, 0.0 }).ToArray(),
+            "A successful stacking roll must choose a distinct second weighted trait.");
+        Assert.AreEqual(0, settings.SelectTraits(100, 0.25, new[] { 0.0 }).Count);
+
+        var noStacking = new AquafirCreatureVariants.CreatureVariantSettings
+        {
+            AssignmentChance = 1.0,
+            AllowVariantStacking = false,
+            TraitWeights = new()
+            {
+                [AquafirCreatureVariants.CreatureVariantType.Accurate] = 1.0,
+                [AquafirCreatureVariants.CreatureVariantType.Vampire] = 1.0
+            }
+        }.Compile();
+        CollectionAssert.AreEqual(
+            new[] { AquafirCreatureVariants.CreatureVariantType.Accurate },
+            noStacking.SelectTraits(100, 0.0, new[] { 0.0 }).ToArray());
+
+        var cappedStacking = new AquafirCreatureVariants.CreatureVariantSettings
+        {
+            AssignmentChance = 1.0,
+            AllowVariantStacking = true,
+            AdditionalVariantChance = 1.0,
+            MaximumVariantsPerCreature = 3,
+            TraitWeights = new()
+            {
+                [AquafirCreatureVariants.CreatureVariantType.Accurate] = 1.0,
+                [AquafirCreatureVariants.CreatureVariantType.Berserker] = 1.0,
+                [AquafirCreatureVariants.CreatureVariantType.Evader] = 1.0,
+                [AquafirCreatureVariants.CreatureVariantType.Vampire] = 1.0
+            }
+        }.Compile();
+        var cappedTraits = cappedStacking.SelectTraits(100, 0.0, new[] { 0.0, 0.0, 0.0, 0.0, 0.0 });
+        Assert.AreEqual(3, cappedTraits.Count);
+        Assert.AreEqual(3, cappedTraits.Distinct().Count(), "Stacked variants must never repeat.");
+        Assert.AreEqual(1.0,
+            AquafirCreatureVariants.CreatureVariantRuntime.GetHordeDamageMultiplier(1, defaults), 0.0001);
+        Assert.AreEqual(1.75,
+            AquafirCreatureVariants.CreatureVariantRuntime.GetHordeDamageMultiplier(6, defaults), 0.0001);
+
+        Assert.ThrowsExactly<InvalidDataException>(() => new AquafirCreatureVariants.CreatureVariantSettings
+        {
+            AssignmentChance = 1.01
+        }.Compile());
+        Assert.ThrowsExactly<InvalidDataException>(() => new AquafirCreatureVariants.CreatureVariantSettings
+        {
+            AdditionalVariantChance = -0.01
+        }.Compile());
+        Assert.ThrowsExactly<InvalidDataException>(() => new AquafirCreatureVariants.CreatureVariantSettings
+        {
+            MaximumVariantsPerCreature = 19
+        }.Compile());
+        Assert.ThrowsExactly<InvalidDataException>(() => new AquafirCreatureVariants.CreatureVariantSettings
+        {
+            AssignmentChance = 0.1,
+            TraitWeights = new()
+        }.Compile());
+        Assert.ThrowsExactly<InvalidDataException>(() => new AquafirCreatureVariants.CreatureVariantSettings
+        {
+            ForcedTraitsByWeenieClassId = new()
+            {
+                ["1234"] = AquafirCreatureVariants.CreatureVariantType.Accurate,
+                ["0x4D2"] = AquafirCreatureVariants.CreatureVariantType.Evader
+            }
+        }.Compile());
+        Assert.ThrowsExactly<InvalidDataException>(() => new AquafirCreatureVariants.CreatureVariantSettings
+        {
+            HordeMinimumMembers = 7,
+            HordeMaximumMembers = 6
+        }.Compile());
+        Assert.ThrowsExactly<InvalidDataException>(() => new AquafirCreatureVariants.CreatureVariantSettings
+        {
+            BossSpellIds = new() { 0 }
+        }.Compile());
+        Assert.ThrowsExactly<InvalidDataException>(() => new AquafirCreatureVariants.CreatureVariantSettings
+        {
+            StunnerDurationSeconds = 31.0
+        }.Compile());
+
+        var forcedBoss = new AquafirCreatureVariants.CreatureVariantSettings
+        {
+            ForcedTraitsByWeenieClassId = new()
+            {
+                ["2000"] = AquafirCreatureVariants.CreatureVariantType.Boss
+            }
+        }.Compile();
+        CollectionAssert.AreEqual(
+            new[] { AquafirCreatureVariants.CreatureVariantType.Boss },
+            forcedBoss.SelectTraits(2000, 0.99, Array.Empty<double>()).ToArray(),
+            "A forced WCID mapping must remain exact and bypass random stacking.");
+    }
+
+    [TestMethod]
+    [DoNotParallelize]
+    public void AquafirCreatureVariantsTargetsPinnedAceSignaturesAndCanBeRemoved()
+    {
+        var factoryTargets = AccessTools.GetDeclaredMethods(typeof(WorldObjectFactory))
+            .Where(method => method.Name == nameof(WorldObjectFactory.CreateWorldObject) &&
+                method.ReturnType == typeof(WorldObject))
+            .Cast<System.Reflection.MethodBase>()
+            .ToArray();
+        var damage = AccessTools.Method(typeof(DamageEvent), "DoCalculateDamage",
+            new[] { typeof(Creature), typeof(Creature), typeof(WorldObject) });
+        var evade = AccessTools.Method(typeof(DamageEvent), nameof(DamageEvent.GetEvadeChance),
+            new[] { typeof(Creature), typeof(Creature) });
+        var takeDamage = AccessTools.Method(typeof(Creature), nameof(Creature.TakeDamage),
+            new[] { typeof(WorldObject), typeof(DamageType), typeof(float), typeof(bool) });
+        var heartbeat = AccessTools.Method(typeof(Creature), nameof(Creature.Heartbeat),
+            new[] { typeof(double) });
+        var attribute = AccessTools.Method(typeof(CreatureAttribute), nameof(CreatureAttribute.GetCurrent),
+            new[] { typeof(bool) });
+        var vital = AccessTools.Method(typeof(CreatureVital), nameof(CreatureVital.GetMaxValue),
+            new[] { typeof(bool) });
+        var nameGetter = AccessTools.PropertyGetter(typeof(WorldObject), nameof(WorldObject.Name));
+        var scaleGetter = AccessTools.PropertyGetter(typeof(WorldObject), nameof(WorldObject.ObjScale));
+        var xpGetter = AccessTools.PropertyGetter(typeof(WorldObject), nameof(WorldObject.XpOverride));
+        var spellResist = AccessTools.Method(typeof(WorldObject), nameof(WorldObject.TryResistSpell),
+            new[] { typeof(WorldObject), typeof(ACE.Server.Entity.Spell), typeof(WorldObject), typeof(bool) });
+
+        Assert.AreEqual(3, factoryTargets.Length);
+        Assert.IsNotNull(damage);
+        Assert.IsNotNull(evade);
+        Assert.IsNotNull(takeDamage);
+        Assert.IsNotNull(heartbeat);
+        Assert.IsNotNull(attribute);
+        Assert.IsNotNull(vital);
+        Assert.IsNotNull(nameGetter);
+        Assert.IsNotNull(scaleGetter);
+        Assert.IsNotNull(xpGetter);
+        Assert.IsNotNull(spellResist);
+        var targets = factoryTargets.Concat(new[]
+        {
+            damage, evade, takeDamage, heartbeat, attribute, vital, nameGetter, scaleGetter, xpGetter, spellResist
+        }).ToArray();
+
+        var mod = new AquafirCreatureVariants.Mod();
+        try
+        {
+            mod.Initialize();
+            foreach (var target in targets)
+            {
+                var patchInfo = Harmony.GetPatchInfo(target);
+                Assert.IsNotNull(patchInfo, target.Name);
+                Assert.IsTrue(patchInfo.Prefixes.Concat(patchInfo.Postfixes).Any(patch =>
+                    patch.owner == AquafirCreatureVariants.Mod.HarmonyId), target.Name);
+            }
+
+            Assert.AreEqual(1, CommandManager.GetCommandByName("creaturevariants").Count());
+        }
+        finally
+        {
+            mod.Dispose();
+        }
+
+        foreach (var target in targets)
+        {
+            var remaining = Harmony.GetPatchInfo(target);
+            Assert.IsTrue(remaining is null || remaining.Prefixes.Concat(remaining.Postfixes).All(patch =>
+                patch.owner != AquafirCreatureVariants.Mod.HarmonyId), target.Name);
+        }
+        Assert.AreEqual(0, CommandManager.GetCommandByName("creaturevariants").Count());
     }
 
     [TestMethod]
@@ -568,6 +1261,55 @@ public sealed class ModTests
     }
 
     [TestMethod]
+    public async Task EmbeddedIntegrityPackageInstallsWithoutSidecar()
+    {
+        var root = TestPaths.CreateTemporaryDirectory();
+        try
+        {
+            var package = Path.Combine(root, "test-v2.zip");
+            CreateEmbeddedIntegrityPackage(package);
+            Assert.IsFalse(File.Exists(package + ".sha256"));
+
+            var installer = new ModPackageInstaller();
+            var manifest = await installer.InspectAsync(package);
+            var installed = await installer.InstallAsync(
+                package, "test.mod", Path.Combine(root, "Mods"), Path.Combine(root, "Staging"));
+
+            Assert.AreEqual(2, manifest.FormatVersion);
+            Assert.AreEqual("SHA256", manifest.Integrity?.Algorithm);
+            Assert.IsTrue(File.Exists(Path.Combine(installed, "TestMod.dll")));
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [TestMethod]
+    public async Task EmbeddedIntegrityRejectsChangedOrUnlistedPayloads()
+    {
+        var root = TestPaths.CreateTemporaryDirectory();
+        try
+        {
+            var changed = Path.Combine(root, "changed.zip");
+            CreateEmbeddedIntegrityPackage(changed, useIncorrectDllHash: true);
+            var changedError = await Assert.ThrowsAsync<InvalidDataException>(() =>
+                new ModPackageInstaller().InspectAsync(changed));
+            StringAssert.Contains(changedError.Message, "does not match");
+
+            var unlisted = Path.Combine(root, "unlisted.zip");
+            CreateEmbeddedIntegrityPackage(unlisted, additionalUnlistedEntry: "mod/extra.txt");
+            var unlistedError = await Assert.ThrowsAsync<InvalidDataException>(() =>
+                new ModPackageInstaller().InspectAsync(unlisted));
+            StringAssert.Contains(unlistedError.Message, "unhashed file");
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [TestMethod]
     public async Task PackageTraversalIsRejected()
     {
         var root = TestPaths.CreateTemporaryDirectory();
@@ -660,6 +1402,39 @@ public sealed class ModTests
         }
 
         File.WriteAllText(path + ".sha256", Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))));
+    }
+
+    private static void CreateEmbeddedIntegrityPackage(
+        string path,
+        bool useIncorrectDllHash = false,
+        string? additionalUnlistedEntry = null)
+    {
+        const string metadata = "{\"Name\":\"Test Mod\",\"Enabled\":true}";
+        const string assembly = "test assembly placeholder";
+        var hashes = new Dictionary<string, string>
+        {
+            ["mod/Meta.json"] = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(metadata))),
+            ["mod/TestMod.dll"] = useIncorrectDllHash
+                ? new string('0', 64)
+                : Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(assembly)))
+        };
+        var manifest = JsonSerializer.Serialize(new
+        {
+            formatVersion = 2,
+            id = "test.mod",
+            name = "Test Mod",
+            version = "2.0.0",
+            folderName = "TestMod",
+            entryAssembly = "TestMod.dll",
+            integrity = new { algorithm = "SHA256", files = hashes }
+        });
+
+        using var archive = ZipFile.Open(path, ZipArchiveMode.Create);
+        WriteEntry(archive, "ace-mod.json", manifest);
+        WriteEntry(archive, "mod/Meta.json", metadata);
+        WriteEntry(archive, "mod/TestMod.dll", assembly);
+        if (additionalUnlistedEntry is not null)
+            WriteEntry(archive, additionalUnlistedEntry, "not listed in the integrity manifest");
     }
 
     private static void WriteEntry(ZipArchive archive, string name, string content)
