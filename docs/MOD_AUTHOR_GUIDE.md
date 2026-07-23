@@ -116,7 +116,7 @@ Create `ace-mod.json`:
 
 The package ID should be stable across updates. The name, folder, DLL, and `Meta.json` name must agree.
 
-## 5. Build a checksummed import ZIP
+## 5. Build a self-verifying import ZIP
 
 From the repository root, run:
 
@@ -124,11 +124,10 @@ From the repository root, run:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-mod.ps1 -ProjectDirectory .\Source\ACE.SinglePlayer.Mods.MyMod
 ```
 
-The helper builds against the repository's ACE version and creates two files under `artifacts\Mods`:
+The helper builds against the repository's ACE version and creates one shareable file under `artifacts\Mods`:
 
 ```text
 your-name.my-mod-1.0.0.zip
-your-name.my-mod-1.0.0.zip.sha256
 ```
 
 Internally, the ZIP has the format the launcher requires:
@@ -142,18 +141,18 @@ mod/
   LICENSE.txt
 ```
 
-`Settings.json` is included automatically when the project has one. Keep the `.zip` and `.zip.sha256` files together when sharing the mod.
+`Settings.json` is included automatically when the project has one. During packaging, the helper upgrades the ZIP manifest to format 2 and embeds a SHA-256 hash for every file under `mod/`. The ZIP can therefore be shared and imported by itself.
 
 ## 6. Import it
 
 1. Stop the game and local server.
 2. Open **Server Mods** in OpenDereth.
 3. Click **Import a Mod ZIP...** at the top.
-4. Choose the `.zip`; the launcher finds and verifies the adjacent `.zip.sha256` file.
+4. Choose the `.zip`; the launcher verifies its embedded SHA-256 file manifest.
 5. Read the warning and confirm.
 6. Click **Play** to start ACE with the mod.
 
-The importer checks the checksum, manifest, required files, naming rules, archive paths, size limits, and atomic installation. It **cannot prove arbitrary DLL code is safe** and it cannot discover every conflict between two Harmony patches.
+The importer checks every embedded file hash, the manifest, required files, naming rules, archive paths, size limits, and atomic installation. Legacy format-1 packages remain supported when their external `.zip.sha256` file is present. Embedded hashes detect damaged or altered payload files, but they **cannot prove arbitrary DLL code is trustworthy or safe**, and the importer cannot discover every conflict between two Harmony patches.
 
 ## Testing checklist before sharing
 

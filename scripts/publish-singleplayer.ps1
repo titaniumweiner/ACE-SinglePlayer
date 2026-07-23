@@ -7,6 +7,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repoRoot = [IO.Path]::GetFullPath((Split-Path $PSScriptRoot -Parent))
+. (Join-Path $PSScriptRoot "mod-package-tools.ps1")
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
     $localBuildRoot = if ([string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
         Join-Path ([IO.Path]::GetTempPath()) "OpenDereth-Build"
@@ -115,8 +116,15 @@ Write-Host "Building the curated mod packages..."
 foreach ($modProject in @(
     "ACE.SinglePlayer.Mods.CriticalOverride",
     "ACE.SinglePlayer.Mods.ACEUniqueWeeniesProc",
+    "ACE.SinglePlayer.Mods.AquafirCreatureVariants",
     "ACE.SinglePlayer.Mods.HelloCommand",
-    "ACE.SinglePlayer.Mods.SocietyTailoring"
+    "ACE.SinglePlayer.Mods.HousingUpgradePack",
+    "ACE.SinglePlayer.Mods.LandblockSummonBalance",
+    "ACE.SinglePlayer.Mods.MultiImbue",
+    "ACE.SinglePlayer.Mods.SocietyTailoring",
+    "ACE.SinglePlayer.Mods.UnlimitedStatAugmentation",
+    "ACE.SinglePlayer.Mods.UnlimitedSkillSpecializations",
+    "ACE.SinglePlayer.Mods.UniversalLootLuck"
 )) {
     & (Join-Path $repoRoot "scripts\package-mod.ps1") `
         -ProjectDirectory (Join-Path $repoRoot "Source\$modProject") `
@@ -147,17 +155,18 @@ foreach ($fileName in $customClothingUpstreamFiles) {
 $customClothingModDirectory = Join-Path $customClothingPackage "mod"
 $customClothingJsonDirectory = Join-Path $customClothingModDirectory "json"
 New-Item -ItemType Directory -Force -Path $customClothingModDirectory, $customClothingJsonDirectory | Out-Null
-Copy-Item -LiteralPath (Join-Path $repoRoot "packaging\CustomClothingBase\ace-mod.json") -Destination $customClothingPackage
 foreach ($fileName in $customClothingUpstreamFiles) {
     Copy-Item -LiteralPath (Join-Path $customClothingExtract $fileName) -Destination $customClothingModDirectory
 }
 Copy-Item -LiteralPath (Join-Path $repoRoot "packaging\CustomClothingBase\Meta.json") -Destination $customClothingModDirectory
 Copy-Item -LiteralPath (Join-Path $repoRoot "packaging\CustomClothingBase\README.md") -Destination $customClothingModDirectory
 Copy-Item -LiteralPath (Join-Path $repoRoot "packaging\CustomClothingBase\json\README.txt") -Destination $customClothingJsonDirectory
+Write-EmbeddedModPackageManifest `
+    -SourceManifestPath (Join-Path $repoRoot "packaging\CustomClothingBase\ace-mod.json") `
+    -PackageDirectory $customClothingPackage
 $customClothingOutputArchive = Join-Path $OutputDirectory "Packages\optimshi.custom-clothing-base-1.11-upstream.zip"
 Compress-Archive -Path (Join-Path $customClothingPackage "*") -DestinationPath $customClothingOutputArchive -CompressionLevel Optimal
 $customClothingPackageSha256 = (Get-FileHash -LiteralPath $customClothingOutputArchive -Algorithm SHA256).Hash.ToLowerInvariant()
-$customClothingPackageSha256 | Set-Content -LiteralPath ($customClothingOutputArchive + ".sha256") -Encoding ascii
 
 if (-not $SkipBundledDependencies) {
     New-Item -ItemType Directory -Path $cacheRoot, $mariaDbExtract, $worldExtract -Force | Out-Null

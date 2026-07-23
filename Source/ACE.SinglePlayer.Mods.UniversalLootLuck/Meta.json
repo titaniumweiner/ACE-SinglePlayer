@@ -1,0 +1,14 @@
+{
+  "Name": "All-Tier Salvage & Loot Luck",
+  "Author": "OpenDereth",
+  "Description": "Makes every equipment-loot tier eligible for the complete ACE material pool and offers independent, optional quality, loot-chance, trophy, and rare multipliers.",
+  "Version": "1.0.0-sp1",
+  "Priority": 0,
+  "Enabled": true,
+  "HotReload": false,
+  "RegisterCommands": false,
+  "CatalogId": "opendereth.universal-loot-luck",
+  "TargetAceVersion": "ACE.Server 1.1 / .NET 10",
+  "DataImpact": "CharacterData",
+  "RemovalPolicy": "ChangesRemain"
+}

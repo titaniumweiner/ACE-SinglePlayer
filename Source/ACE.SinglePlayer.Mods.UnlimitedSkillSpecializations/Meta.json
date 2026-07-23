@@ -1,0 +1,14 @@
+{
+  "Name": "Unlimited Skill Specializations",
+  "Author": "OpenDereth",
+  "Description": "Removes ACE's 70-credit total specialization ceiling while preserving normal skill prerequisites and skill-credit costs.",
+  "Version": "1.0.0-sp1",
+  "Priority": 0,
+  "Enabled": true,
+  "HotReload": false,
+  "RegisterCommands": false,
+  "CatalogId": "opendereth.unlimited-skill-specializations",
+  "TargetAceVersion": "ACE.Server 1.1 / .NET 10",
+  "DataImpact": "CharacterData",
+  "RemovalPolicy": "ChangesRemain"
+}

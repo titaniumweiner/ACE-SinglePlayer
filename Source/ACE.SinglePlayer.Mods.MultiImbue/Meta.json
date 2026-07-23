@@ -1,0 +1,14 @@
+{
+  "Name": "Three Imbues",
+  "Author": "OpenDereth",
+  "Description": "Allows eligible items to receive as many as three distinct standard salvage imbues while preserving ACE's normal tinkering rules and success chances.",
+  "Version": "1.0.0-sp1",
+  "Priority": 0,
+  "Enabled": true,
+  "HotReload": false,
+  "RegisterCommands": false,
+  "CatalogId": "opendereth.three-imbues",
+  "TargetAceVersion": "ACE.Server 1.1 / .NET 10",
+  "DataImpact": "CharacterData",
+  "RemovalPolicy": "DoNotRemove"
+}

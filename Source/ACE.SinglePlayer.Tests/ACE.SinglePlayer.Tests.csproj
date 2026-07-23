@@ -16,8 +16,15 @@
   <ItemGroup>
     <ProjectReference Include="..\ACE.SinglePlayer\ACE.SinglePlayer.csproj" />
     <ProjectReference Include="..\ACE.SinglePlayer.Mods.ACEUniqueWeeniesProc\ACE.SinglePlayer.Mods.ACEUniqueWeeniesProc.csproj" />
+    <ProjectReference Include="..\ACE.SinglePlayer.Mods.AquafirCreatureVariants\ACE.SinglePlayer.Mods.AquafirCreatureVariants.csproj" />
     <ProjectReference Include="..\ACE.SinglePlayer.Mods.HelloCommand\ACE.SinglePlayer.Mods.HelloCommand.csproj" />
+    <ProjectReference Include="..\ACE.SinglePlayer.Mods.HousingUpgradePack\ACE.SinglePlayer.Mods.HousingUpgradePack.csproj" />
+    <ProjectReference Include="..\ACE.SinglePlayer.Mods.LandblockSummonBalance\ACE.SinglePlayer.Mods.LandblockSummonBalance.csproj" />
+    <ProjectReference Include="..\ACE.SinglePlayer.Mods.MultiImbue\ACE.SinglePlayer.Mods.MultiImbue.csproj" />
     <ProjectReference Include="..\ACE.SinglePlayer.Mods.SocietyTailoring\ACE.SinglePlayer.Mods.SocietyTailoring.csproj" />
+    <ProjectReference Include="..\ACE.SinglePlayer.Mods.UnlimitedStatAugmentation\ACE.SinglePlayer.Mods.UnlimitedStatAugmentation.csproj" />
+    <ProjectReference Include="..\ACE.SinglePlayer.Mods.UnlimitedSkillSpecializations\ACE.SinglePlayer.Mods.UnlimitedSkillSpecializations.csproj" />
+    <ProjectReference Include="..\ACE.SinglePlayer.Mods.UniversalLootLuck\ACE.SinglePlayer.Mods.UniversalLootLuck.csproj" />
     <ProjectReference Include="..\ACE.SinglePlayer.TestHost\ACE.SinglePlayer.TestHost.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
 </Project>

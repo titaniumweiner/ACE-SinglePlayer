@@ -336,7 +336,7 @@ public sealed class ModsForm : Form
                 string.Equals(entry.Id, manifest.Id, StringComparison.OrdinalIgnoreCase));
             var compatibilityWarning = catalog?.Availability switch
             {
-                null => "This package is not in the curated catalog. The launcher can validate its checksum and file layout, but cannot prove that its code is compatible or safe for saved characters.",
+                null => "This package is not in the curated catalog. The launcher can validate its integrity manifest and file layout, but cannot prove that its code is compatible or safe for saved characters.",
                 ModCatalogAvailability.Ready => catalog.SafetyNotice,
                 ModCatalogAvailability.Preview => catalog.SafetyNotice + "\r\n\r\nPREVIEW WARNING: automated checks passed, but this mod has not been thoroughly tested in game.",
                 _ => "The bundled catalog still marks this mod as needing a source port. Only continue if this ZIP was rebuilt and tested specifically for the current OpenDereth release."
@@ -344,7 +344,10 @@ public sealed class ModsForm : Form
 
             var answer = MessageBox.Show(this,
                 $"Import {manifest.Name} {manifest.Version}?\r\n\r\nPackage ID: {manifest.Id}\r\n\r\n{compatibilityWarning}\r\n\r\n" +
-                "A matching .sha256 checksum file was verified. Back up %LOCALAPPDATA%\\OpenDereth before importing unverified code. The server will restart when you next click Play.",
+                (manifest.FormatVersion >= 2
+                    ? "The package's embedded SHA-256 integrity manifest was verified. "
+                    : "A matching external .sha256 checksum file was verified. ") +
+                "Back up %LOCALAPPDATA%\\OpenDereth before importing unverified code. The server will restart when you next click Play.",
                 "Import mod package", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
             if (answer != DialogResult.Yes)
                 return;
@@ -363,7 +366,7 @@ public sealed class ModsForm : Form
         {
             MessageBox.Show(this,
                 ex.Message +
-                "\r\n\r\nA supported package contains ace-mod.json at the ZIP root, its files under mod/, and a matching .zip.sha256 file beside the ZIP.",
+                "\r\n\r\nA supported package contains ace-mod.json at the ZIP root and its files under mod/. Current format-2 packages carry embedded SHA-256 hashes; legacy format-1 packages also need a matching .zip.sha256 file beside the ZIP.",
                 "Mod was not imported", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         finally
